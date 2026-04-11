@@ -1,0 +1,22 @@
+{
+  "single_click": {
+    "type": "key",
+    "key": "down",
+    "modifiers": [],
+    "description": "↓ 下箭头"
+  },
+  "double_click": {
+    "type": "key",
+    "key": "up",
+    "modifiers": [],
+    "description": "↑ 上箭头"
+  },
+  "long_press": {
+    "type": "key",
+    "key": "return",
+    "modifiers": [],
+    "description": "Enter 回车"
+  },
+  "double_click_interval": 0.4,
+  "long_press_threshold": 0.5
+}
