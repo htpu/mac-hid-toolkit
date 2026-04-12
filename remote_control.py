@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-AB Shutter3 Remote Control Remapper
-====================================
-Intercepts events from the AB Shutter3 Bluetooth remote and remaps
+BLE Remote Control Remapper
+============================
+Intercepts events from configurable BLE HID devices and remaps
 them to custom keyboard/mouse actions. Uses IOKit HID device-level
 filtering so it won't interfere with keyboard media keys.
 
-Single button → 3 actions via gesture detection:
-  - Single click  → configurable action
-  - Double click  → configurable action
-  - Long press    → configurable action
+Supports multiple devices, each with independent gesture detection:
+  - Single click  -> configurable action
+  - Double click  -> configurable action
+  - Long press    -> configurable action
 
 Usage:
   python remote_control.py                    # Run with default config
@@ -20,15 +20,26 @@ Requires: Accessibility permission in System Settings > Privacy & Security
 
 import Quartz
 from Quartz import (
-    CGEventTapCreate, kCGSessionEventTap, kCGHeadInsertEventTap,
-    CGEventMaskBit, CFMachPortCreateRunLoopSource,
-    CFRunLoopGetCurrent, CFRunLoopAddSource, kCFRunLoopCommonModes,
-    CFRunLoopRun, CGEventCreateKeyboardEvent, CGEventPost,
-    kCGHIDEventTap, CGEventSetFlags,
-    kCGEventFlagMaskShift, kCGEventFlagMaskControl,
-    kCGEventFlagMaskAlternate, kCGEventFlagMaskCommand,
-    kCGEventLeftMouseDown, kCGEventLeftMouseUp,
-    kCGEventRightMouseDown, kCGEventRightMouseUp,
+    CGEventTapCreate,
+    kCGSessionEventTap,
+    kCGHeadInsertEventTap,
+    CGEventMaskBit,
+    CFMachPortCreateRunLoopSource,
+    CFRunLoopGetCurrent,
+    CFRunLoopAddSource,
+    kCFRunLoopCommonModes,
+    CGEventCreateKeyboardEvent,
+    CGEventPost,
+    kCGHIDEventTap,
+    CGEventSetFlags,
+    kCGEventFlagMaskShift,
+    kCGEventFlagMaskControl,
+    kCGEventFlagMaskAlternate,
+    kCGEventFlagMaskCommand,
+    kCGEventLeftMouseDown,
+    kCGEventLeftMouseUp,
+    kCGEventRightMouseDown,
+    kCGEventRightMouseUp,
     CGEventCreateMouseEvent,
 )
 import ctypes
@@ -54,11 +65,19 @@ _iokit.IOHIDManagerCreate.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
 _iokit.IOHIDManagerSetDeviceMatching.restype = None
 _iokit.IOHIDManagerSetDeviceMatching.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 _iokit.IOHIDManagerScheduleWithRunLoop.restype = None
-_iokit.IOHIDManagerScheduleWithRunLoop.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+_iokit.IOHIDManagerScheduleWithRunLoop.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+]
 _iokit.IOHIDManagerOpen.restype = ctypes.c_int
 _iokit.IOHIDManagerOpen.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
 _iokit.IOHIDManagerRegisterInputValueCallback.restype = None
-_iokit.IOHIDManagerRegisterInputValueCallback.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+_iokit.IOHIDManagerRegisterInputValueCallback.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+]
 
 # IOHIDValue
 _iokit.IOHIDValueGetElement.restype = ctypes.c_void_p
@@ -77,13 +96,45 @@ _cf.CFRunLoopGetCurrent.restype = ctypes.c_void_p
 _cf.CFNumberCreate.restype = ctypes.c_void_p
 _cf.CFNumberCreate.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
 _cf.CFDictionaryCreateMutable.restype = ctypes.c_void_p
-_cf.CFDictionaryCreateMutable.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p]
+_cf.CFDictionaryCreateMutable.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_long,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+]
 _cf.CFDictionarySetValue.restype = None
 _cf.CFDictionarySetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 
 # CFString
 _cf.CFStringCreateWithCString.restype = ctypes.c_void_p
-_cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+_cf.CFStringCreateWithCString.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_uint32,
+]
+_cf.CFStringGetCString.restype = ctypes.c_bool
+_cf.CFStringGetCString.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_long,
+    ctypes.c_uint32,
+]
+
+# CFNumber
+_cf.CFNumberGetValue.restype = ctypes.c_bool
+_cf.CFNumberGetValue.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+
+# CFSet
+_cf.CFSetGetCount.restype = ctypes.c_long
+_cf.CFSetGetCount.argtypes = [ctypes.c_void_p]
+_cf.CFSetGetValues.restype = None
+_cf.CFSetGetValues.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+
+# IOHIDDevice property
+_iokit.IOHIDManagerCopyDevices.restype = ctypes.c_void_p
+_iokit.IOHIDManagerCopyDevices.argtypes = [ctypes.c_void_p]
+_iokit.IOHIDDeviceGetProperty.restype = ctypes.c_void_p
+_iokit.IOHIDDeviceGetProperty.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 
 kCFNumberSInt32Type = 3
 kCFStringEncodingUTF8 = 0x08000100
@@ -92,10 +143,8 @@ kCFAllocatorDefault = None
 # IOKit HID keys
 kIOHIDVendorIDKey = b"VendorID"
 kIOHIDProductIDKey = b"ProductID"
-
-# AB Shutter3 identifiers
-AB_SHUTTER_VENDOR_ID = 0x248A
-AB_SHUTTER_PRODUCT_ID = 0x8266
+kIOHIDProductKey = b"Product"
+kIOHIDTransportKey = b"Transport"
 
 # Consumer Control usage page
 USAGE_PAGE_CONSUMER = 0x0C
@@ -118,47 +167,207 @@ def _cfstr(s):
 
 def _cfnum(n):
     val = ctypes.c_int32(n)
-    return _cf.CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, ctypes.byref(val))
+    return _cf.CFNumberCreate(
+        kCFAllocatorDefault, kCFNumberSInt32Type, ctypes.byref(val)
+    )
+
+
+def _cfstr_to_py(cfstr):
+    """Convert a CFStringRef to a Python string, or return None."""
+    if not cfstr:
+        return None
+    buf = ctypes.create_string_buffer(256)
+    if _cf.CFStringGetCString(cfstr, buf, 256, kCFStringEncodingUTF8):
+        return buf.value.decode("utf-8", errors="replace")
+    return None
+
+
+def _cfnum_to_py(cfnum):
+    """Convert a CFNumberRef to a Python int, or return None."""
+    if not cfnum:
+        return None
+    val = ctypes.c_int32()
+    if _cf.CFNumberGetValue(cfnum, kCFNumberSInt32Type, ctypes.byref(val)):
+        return val.value
+    return None
+
+
+def scan_hid_devices():
+    """Scan connected HID devices. Returns list of {name, vendor_id, product_id, transport}."""
+    manager = _iokit.IOHIDManagerCreate(kCFAllocatorDefault, 0)
+    _iokit.IOHIDManagerSetDeviceMatching(manager, None)  # match all
+    _iokit.IOHIDManagerScheduleWithRunLoop(
+        manager, _cf.CFRunLoopGetCurrent(), _cfstr(b"kCFRunLoopDefaultMode")
+    )
+    _iokit.IOHIDManagerOpen(manager, 0)
+
+    device_set = _iokit.IOHIDManagerCopyDevices(manager)
+    if not device_set:
+        return []
+
+    count = _cf.CFSetGetCount(device_set)
+    if count <= 0:
+        return []
+    arr = (ctypes.c_void_p * count)()
+    _cf.CFSetGetValues(device_set, arr)
+
+    results = []
+    seen = set()
+    for i in range(count):
+        dev = arr[i]
+        vid = _cfnum_to_py(
+            _iokit.IOHIDDeviceGetProperty(dev, _cfstr(kIOHIDVendorIDKey))
+        )
+        pid = _cfnum_to_py(
+            _iokit.IOHIDDeviceGetProperty(dev, _cfstr(kIOHIDProductIDKey))
+        )
+        if vid is None or pid is None:
+            continue
+        key = (vid, pid)
+        if key in seen:
+            continue
+        seen.add(key)
+        name = (
+            _cfstr_to_py(_iokit.IOHIDDeviceGetProperty(dev, _cfstr(kIOHIDProductKey)))
+            or "Unknown"
+        )
+        transport = (
+            _cfstr_to_py(_iokit.IOHIDDeviceGetProperty(dev, _cfstr(kIOHIDTransportKey)))
+            or ""
+        )
+        results.append(
+            {
+                "name": name,
+                "vendor_id": f"0x{vid:04X}",
+                "product_id": f"0x{pid:04X}",
+                "transport": transport,
+            }
+        )
+
+    results.sort(key=lambda d: (d["transport"] != "Bluetooth", d["name"]))
+    return results
 
 
 # Callback function type for IOHIDManager
-IOHIDValueCallback = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p)
+# C signature: void (*IOHIDValueCallback)(void *context, IOReturn result, void *sender, IOHIDValueRef value)
+IOHIDValueCallback = ctypes.CFUNCTYPE(
+    None, ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p
+)
 
 # ── macOS virtual key codes ────────────────────────────────────────
 KEYCODES = {
-    "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7,
-    "c": 8, "v": 9, "b": 11, "q": 12, "w": 13, "e": 14, "r": 15,
-    "y": 16, "t": 17, "1": 18, "2": 19, "3": 20, "4": 21, "6": 22,
-    "5": 23, "=": 24, "9": 25, "7": 26, "-": 27, "8": 28, "0": 29,
-    "]": 30, "o": 31, "u": 32, "[": 33, "i": 34, "p": 35,
-    "return": 36, "enter": 36,
-    "l": 37, "j": 38, "'": 39, "k": 40, ";": 41, "\\": 42, ",": 43,
-    "/": 44, "n": 45, ".": 46, "`": 47,
-    "tab": 48, "space": 49, "delete": 51, "escape": 53, "esc": 53,
-    "command": 55, "cmd": 55, "shift": 56, "capslock": 57,
-    "option": 58, "alt": 58, "control": 59, "ctrl": 59,
-    "right_shift": 60, "right_option": 61, "right_control": 62,
+    "a": 0,
+    "s": 1,
+    "d": 2,
+    "f": 3,
+    "h": 4,
+    "g": 5,
+    "z": 6,
+    "x": 7,
+    "c": 8,
+    "v": 9,
+    "b": 11,
+    "q": 12,
+    "w": 13,
+    "e": 14,
+    "r": 15,
+    "y": 16,
+    "t": 17,
+    "1": 18,
+    "2": 19,
+    "3": 20,
+    "4": 21,
+    "6": 22,
+    "5": 23,
+    "=": 24,
+    "9": 25,
+    "7": 26,
+    "-": 27,
+    "8": 28,
+    "0": 29,
+    "]": 30,
+    "o": 31,
+    "u": 32,
+    "[": 33,
+    "i": 34,
+    "p": 35,
+    "return": 36,
+    "enter": 36,
+    "l": 37,
+    "j": 38,
+    "'": 39,
+    "k": 40,
+    ";": 41,
+    "\\": 42,
+    ",": 43,
+    "/": 44,
+    "n": 45,
+    ".": 46,
+    "`": 47,
+    "tab": 48,
+    "space": 49,
+    "delete": 51,
+    "escape": 53,
+    "esc": 53,
+    "command": 55,
+    "cmd": 55,
+    "shift": 56,
+    "capslock": 57,
+    "option": 58,
+    "alt": 58,
+    "control": 59,
+    "ctrl": 59,
+    "right_shift": 60,
+    "right_option": 61,
+    "right_control": 62,
     "fn": 63,
-    "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
-    "f7": 98, "f8": 100, "f9": 101, "f10": 109, "f11": 111, "f12": 103,
-    "f13": 105, "f14": 107, "f15": 113,
-    "home": 115, "pageup": 116, "forwarddelete": 117,
-    "end": 119, "pagedown": 121,
-    "left": 123, "right": 124, "down": 125, "up": 126,
+    "f1": 122,
+    "f2": 120,
+    "f3": 99,
+    "f4": 118,
+    "f5": 96,
+    "f6": 97,
+    "f7": 98,
+    "f8": 100,
+    "f9": 101,
+    "f10": 109,
+    "f11": 111,
+    "f12": 103,
+    "f13": 105,
+    "f14": 107,
+    "f15": 113,
+    "home": 115,
+    "pageup": 116,
+    "forwarddelete": 117,
+    "end": 119,
+    "pagedown": 121,
+    "left": 123,
+    "right": 124,
+    "down": 125,
+    "up": 126,
 }
 
-DEFAULT_CONFIG = {
+DEFAULT_DEVICE = {
+    "name": "AB Shutter3",
+    "vendor_id": "0x248A",
+    "product_id": "0x8266",
     "single_click": {
-        "type": "key", "key": "down", "modifiers": [],
-        "description": "↓ 下箭头"
+        "type": "key",
+        "key": "down",
+        "modifiers": [],
+        "description": "\u2193 Down",
     },
     "double_click": {
-        "type": "key", "key": "up", "modifiers": [],
-        "description": "↑ 上箭头"
+        "type": "key",
+        "key": "up",
+        "modifiers": [],
+        "description": "\u2191 Up",
     },
     "long_press": {
-        "type": "key", "key": "return", "modifiers": [],
-        "description": "Enter 回车"
+        "type": "key",
+        "key": "return",
+        "modifiers": [],
+        "description": "\u21a9 Return",
     },
     "double_click_interval": 0.4,
     "long_press_threshold": 0.5,
@@ -196,7 +405,8 @@ class GestureDetector:
             self._click_count += 1
             if self._click_count == 1:
                 self._timer = threading.Timer(
-                    self.double_click_interval, self._resolve_click)
+                    self.double_click_interval, self._resolve_click
+                )
                 self._timer.daemon = True
                 self._timer.start()
             elif self._click_count >= 2:
@@ -208,7 +418,8 @@ class GestureDetector:
     def _start_long_press_timer(self):
         self._cancel_long_press_timer()
         self._long_press_timer = threading.Timer(
-            self.long_press_threshold, self._on_long_press)
+            self.long_press_threshold, self._on_long_press
+        )
         self._long_press_timer.daemon = True
         self._long_press_timer.start()
 
@@ -232,7 +443,37 @@ class GestureDetector:
             self._click_count = 0
 
 
+class DeviceHandler:
+    """Per-device state: HID event tracking + gesture detection."""
+
+    def __init__(self, device_config):
+        self.name = device_config.get("name", "Unknown")
+        self.vendor_id = int(str(device_config.get("vendor_id", "0")), 0)
+        self.product_id = int(str(device_config.get("product_id", "0")), 0)
+        self.config = device_config
+        self.gesture = GestureDetector(device_config, self._on_gesture)
+        self._event_time = 0.0
+        self._lock = threading.Lock()
+        self._hid_callback_ref = None  # prevent GC
+        self._hid_manager = None
+
+    def _on_gesture(self, gesture_type):
+        ts = time.strftime("%H:%M:%S")
+        print(f"[{ts}] [{self.name}] {gesture_type.upper().replace('_', ' ')}")
+        action_config = self.config.get(gesture_type, {"type": "none"})
+        execute_action(action_config)
+
+    def record_event(self):
+        with self._lock:
+            self._event_time = time.monotonic()
+
+    def is_recent(self, threshold=0.1):
+        with self._lock:
+            return time.monotonic() - self._event_time < threshold
+
+
 # ── Action execution ───────────────────────────────────────────────
+
 
 def send_key(key_name, modifiers=None):
     key_lower = key_name.lower()
@@ -278,7 +519,9 @@ def send_mouse_click(button="left"):
 
 
 def run_shell(command):
-    subprocess.Popen(command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        command, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
 
 def execute_action(action_config):
@@ -289,21 +532,22 @@ def execute_action(action_config):
         key = action_config.get("key", "space")
         mods = action_config.get("modifiers", [])
         mod_str = "+".join(mods) + "+" if mods else ""
-        print(f"  → Key: {mod_str}{key} ({desc})")
+        print(f"  \u2192 Key: {mod_str}{key} ({desc})")
         send_key(key, mods)
     elif action_type == "mouse":
         button = action_config.get("button", "left")
-        print(f"  → Mouse: {button} click ({desc})")
+        print(f"  \u2192 Mouse: {button} click ({desc})")
         send_mouse_click(button)
     elif action_type == "shell":
         cmd = action_config.get("command", "")
-        print(f"  → Shell: {cmd} ({desc})")
+        print(f"  \u2192 Shell: {cmd} ({desc})")
         run_shell(cmd)
     elif action_type == "none":
-        print(f"  → (no action) ({desc})")
+        print(f"  \u2192 (no action) ({desc})")
 
 
 # ── Main controller ────────────────────────────────────────────────
+
 
 class DellVolumeControl:
     """Controls Dell monitor volume via DDC/CI using m1ddc."""
@@ -329,7 +573,10 @@ class DellVolumeControl:
             # Check if current audio output is a Dell monitor
             result = subprocess.run(
                 ["system_profiler", "SPAudioDataType"],
-                capture_output=True, text=True, timeout=5)
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             lines = result.stdout.split("\n")
             is_dell_output = False
             for i, line in enumerate(lines):
@@ -355,7 +602,10 @@ class DellVolumeControl:
         try:
             result = subprocess.run(
                 ["/opt/homebrew/bin/m1ddc", "get", "volume"],
-                capture_output=True, text=True, timeout=2)
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
             self._volume = int(result.stdout.strip())
         except Exception:
             self._volume = 50
@@ -365,22 +615,32 @@ class DellVolumeControl:
         self._volume = vol
         subprocess.Popen(
             ["/opt/homebrew/bin/m1ddc", "set", "volume", str(vol)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         ts = time.strftime("%H:%M:%S")
-        bar = "█" * (vol // 5) + "░" * (20 - vol // 5)
+        bar = "\u2588" * (vol // 5) + "\u2591" * (20 - vol // 5)
         print(f"[{ts}] Dell Volume: {bar} {vol}%")
         self._hud.show(vol, muted=self._muted)
 
     def volume_up(self):
         with self._lock:
+            was_muted = self._muted
             self._muted = False
-            vol = self._volume if self._volume is not None else 50
+            if was_muted and self._pre_mute_volume is not None:
+                vol = self._pre_mute_volume
+            else:
+                vol = self._volume if self._volume is not None else 50
             self._set_volume(vol + DDC_VOLUME_STEP)
 
     def volume_down(self):
         with self._lock:
+            was_muted = self._muted
             self._muted = False
-            vol = self._volume if self._volume is not None else 50
+            if was_muted and self._pre_mute_volume is not None:
+                vol = self._pre_mute_volume
+            else:
+                vol = self._volume if self._volume is not None else 50
             self._set_volume(vol - DDC_VOLUME_STEP)
 
     def toggle_mute(self):
@@ -396,36 +656,47 @@ class DellVolumeControl:
 
 
 class RemoteController:
-    def __init__(self, config):
+    def __init__(self, config, config_path=None):
         self.config = config
-        self.gesture = GestureDetector(config, self.on_gesture)
+        self._config_path = config_path or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "config.json"
+        )
+        self._device_handlers = []
+        for dev_cfg in config.get("devices", []):
+            self._device_handlers.append(DeviceHandler(dev_cfg))
         self._hud = VolumeHUD()
         self.dell = DellVolumeControl(self._hud)
-        # Timestamp of the last AB Shutter3 HID report, used to
-        # correlate device-level events with system-level NX events.
-        self._shutter_event_time = 0.0
-        self._lock = threading.Lock()
-        # Keep a reference so the callback isn't garbage-collected
-        self._hid_callback = IOHIDValueCallback(self._hid_value_callback)
 
-    def on_gesture(self, gesture_type):
+    def _on_config_changed(self, new_config):
+        # Migrate old single-device format from menu bar
+        if "devices" not in new_config and "single_click" in new_config:
+            device = dict(DEFAULT_DEVICE)
+            for key in (
+                "single_click",
+                "double_click",
+                "long_press",
+                "double_click_interval",
+                "long_press_threshold",
+            ):
+                if key in new_config:
+                    device[key] = new_config[key]
+            new_config = {"devices": [device]}
+        self.config = new_config
+        self._device_handlers = []
+        for dev_cfg in new_config.get("devices", []):
+            self._device_handlers.append(DeviceHandler(dev_cfg))
         ts = time.strftime("%H:%M:%S")
-        print(f"[{ts}] {gesture_type.upper().replace('_', ' ')}")
-        action_config = self.config.get(gesture_type, {"type": "none"})
-        execute_action(action_config)
+        print(f"\n[{ts}] Config reloaded")
+        for dev in self._device_handlers:
+            print(f"  [{dev.name}] {dev.vendor_id:#06x}:{dev.product_id:#06x}")
+            for g in ("single_click", "double_click", "long_press"):
+                cfg = dev.config.get(g, {})
+                desc = cfg.get("description", "\u2013")
+                label = g.replace("_", " ").title()
+                print(f"    {label:15s} \u2192 {desc}")
+        print()
 
-    # ── IOKit HID callback (device-level, fires BEFORE NX event) ──
-    def _hid_value_callback(self, context, result, value):
-        element = _iokit.IOHIDValueGetElement(value)
-        usage_page = _iokit.IOHIDElementGetUsagePage(element)
-        usage = _iokit.IOHIDElementGetUsage(element)
-        int_value = _iokit.IOHIDValueGetIntegerValue(value)
-
-        if usage_page == USAGE_PAGE_CONSUMER:
-            with self._lock:
-                self._shutter_event_time = time.monotonic()
-
-    # ── CGEventTap callback (system-level) ────────────────────���────
+    # ── CGEventTap callback (system-level) ─────────────────────────
     def event_callback(self, proxy, event_type, event, refcon):
         if event_type != NX_SYSDEFINED:
             return event
@@ -442,36 +713,35 @@ class RemoteController:
             key_flags = data1 & 0x0000FFFF
             key_state = (key_flags & 0xFF00) >> 8
             is_repeat = key_flags & 0x01
-
             is_down = key_state == 0x0A
 
-            # ── AB Shutter3: code 0 with recent HID report ──
             if key_code == NX_KEYTYPE_SOUND_UP:
-                with self._lock:
-                    elapsed = time.monotonic() - self._shutter_event_time
-                is_from_shutter = elapsed < 0.1
+                # Check if any registered device had a recent HID event
+                active = None
+                for dev in self._device_handlers:
+                    if dev.is_recent():
+                        active = dev
+                        break
 
-                if is_from_shutter:
+                if active:
                     if is_down and not is_repeat:
-                        self.gesture.on_press()
+                        active.gesture.on_press()
                     elif key_state == 0x0B:
-                        self.gesture.on_release()
-                    return None  # Suppress
+                        active.gesture.on_release()
+                    return None
 
-                # Not from shutter → Dell volume or pass through
+                # Not from any device -> Dell volume or pass through
                 if self.dell.is_connected and is_down:
                     self.dell.volume_up()
                     return None
                 return event
 
-            # ── Volume Down → Dell DDC or pass through ──
             if key_code == NX_KEYTYPE_SOUND_DOWN:
                 if self.dell.is_connected and is_down:
                     self.dell.volume_down()
                     return None
                 return event
 
-            # ── Mute → Dell DDC or pass through ──
             if key_code == NX_KEYTYPE_MUTE:
                 if self.dell.is_connected and is_down:
                     self.dell.toggle_mute()
@@ -480,76 +750,124 @@ class RemoteController:
 
         except Exception:
             pass
-
         return event
 
-    def _setup_hid_manager(self):
-        """Set up IOKit HID manager to monitor AB Shutter3 specifically."""
-        manager = _iokit.IOHIDManagerCreate(kCFAllocatorDefault, 0)
+    def _hid_value_callback(self, context, result, sender, value):
+        """Single global HID callback — records event time for ALL devices."""
+        element = _iokit.IOHIDValueGetElement(value)
+        usage_page = _iokit.IOHIDElementGetUsagePage(element)
+        if usage_page == USAGE_PAGE_CONSUMER:
+            for dev in self._device_handlers:
+                dev.record_event()
 
-        # Build matching dict: VendorID=0x248A, ProductID=0x8266
-        match_dict = _cf.CFDictionaryCreateMutable(kCFAllocatorDefault, 2, None, None)
-        _cf.CFDictionarySetValue(match_dict,
-            _cfstr(kIOHIDVendorIDKey), _cfnum(AB_SHUTTER_VENDOR_ID))
-        _cf.CFDictionarySetValue(match_dict,
-            _cfstr(kIOHIDProductIDKey), _cfnum(AB_SHUTTER_PRODUCT_ID))
+    def _setup_all_hid(self):
+        """Set up one IOKit HID manager matching all configured devices."""
+        # Single callback kept alive as instance attribute (prevents GC)
+        self._hid_callback = IOHIDValueCallback(self._hid_value_callback)
 
-        _iokit.IOHIDManagerSetDeviceMatching(manager, match_dict)
-        _iokit.IOHIDManagerRegisterInputValueCallback(
-            manager, self._hid_callback, None)
-        _iokit.IOHIDManagerScheduleWithRunLoop(
-            manager, _cf.CFRunLoopGetCurrent(),
-            _cfstr(b"kCFRunLoopDefaultMode"))
+        for dev in self._device_handlers:
+            manager = _iokit.IOHIDManagerCreate(kCFAllocatorDefault, 0)
+            match_dict = _cf.CFDictionaryCreateMutable(
+                kCFAllocatorDefault, 2, None, None
+            )
+            _cf.CFDictionarySetValue(
+                match_dict, _cfstr(kIOHIDVendorIDKey), _cfnum(dev.vendor_id)
+            )
+            _cf.CFDictionarySetValue(
+                match_dict, _cfstr(kIOHIDProductIDKey), _cfnum(dev.product_id)
+            )
+            _iokit.IOHIDManagerSetDeviceMatching(manager, match_dict)
+            _iokit.IOHIDManagerRegisterInputValueCallback(
+                manager, self._hid_callback, None
+            )
+            _iokit.IOHIDManagerScheduleWithRunLoop(
+                manager, _cf.CFRunLoopGetCurrent(), _cfstr(b"kCFRunLoopDefaultMode")
+            )
 
-        result = _iokit.IOHIDManagerOpen(manager, 0)
-        if result != 0:
-            print(f"WARNING: IOHIDManagerOpen returned {result}")
-            print("  HID device filtering may not work.")
-            print("  Falling back to intercepting all code-0 media events.")
-            # Set shutter time far in the future so all events match
-            self._shutter_event_time = float('inf')
-        else:
-            print("  HID device filter: active (only AB Shutter3 events intercepted)")
+            result = _iokit.IOHIDManagerOpen(manager, 0)
+            if result != 0:
+                print(f"  WARNING: HID for {dev.name} failed (code {result})")
+            else:
+                print(
+                    f"  HID filter: {dev.name} "
+                    f"({dev.vendor_id:#06x}:{dev.product_id:#06x})"
+                )
+            dev._hid_manager = manager
 
-        return manager
+    @staticmethod
+    def _create_app_icon():
+        """Load app icon from PNG, or return None."""
+        from AppKit import NSImage
+
+        icon_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "app_icon.png"
+        )
+        if os.path.exists(icon_path):
+            return NSImage.alloc().initWithContentsOfFile_(icon_path)
+        return None
 
     def run(self):
-        # Initialize NSApplication for HUD window support
+        # Initialize NSApplication
         from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+
         app = NSApplication.sharedApplication()
         app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        self._app_icon = self._create_app_icon()
+        if self._app_icon:
+            app.setApplicationIconImage_(self._app_icon)
 
         print("=" * 60)
-        print("  AB Shutter3 Remote Control Remapper")
+        print("  BLE Remote Control Remapper")
         print("=" * 60)
         print()
-        print("  Mappings:")
-        for gesture in ("single_click", "double_click", "long_press"):
-            cfg = self.config.get(gesture, {})
-            desc = cfg.get("description", "not configured")
-            label = gesture.replace("_", " ").title()
-            print(f"    {label:15s} → {desc}")
-        print()
-        print(f"  Double-click interval: {self.config.get('double_click_interval', 0.4)}s")
-        print(f"  Long-press threshold:  {self.config.get('long_press_threshold', 0.5)}s")
-        print()
+
+        for dev in self._device_handlers:
+            print(f"  [{dev.name}] {dev.vendor_id:#06x}:{dev.product_id:#06x}")
+            for g in ("single_click", "double_click", "long_press"):
+                cfg = dev.config.get(g, {})
+                desc = cfg.get("description", "\u2013")
+                label = g.replace("_", " ").title()
+                print(f"    {label:15s} \u2192 {desc}")
+            dci = dev.config.get("double_click_interval", 0.4)
+            lpt = dev.config.get("long_press_threshold", 0.5)
+            print(f"    Timing: double-click {dci}s, long-press {lpt}s")
+            print()
 
         # Dell monitor volume control
         if self.dell.is_connected:
             print(f"  Dell DDC volume: active (current: {self.dell._volume}%)")
-            print(f"    F11/F12/Mute → Dell monitor speaker")
+            print(f"    F11/F12/Mute \u2192 Dell monitor speaker")
         else:
             print("  Dell DDC volume: not connected (volume keys normal)")
         print()
 
+        # Menu bar
+        from menu_bar import RemoteMenuBar
+
+        self._menu_bar = RemoteMenuBar.alloc().init()
+        self._menu_bar.setup(
+            self.config,
+            self._config_path,
+            self.dell,
+            self._on_config_changed,
+            app_icon=self._app_icon,
+        )
+        print("  Menu bar: active (click icon for preferences)")
+        print()
+
         # Set up device-level HID monitoring
-        self._hid_manager = self._setup_hid_manager()
+        self._setup_all_hid()
 
         # Set up system-level event tap
         mask = CGEventMaskBit(NX_SYSDEFINED)
         tap = CGEventTapCreate(
-            kCGSessionEventTap, kCGHeadInsertEventTap, 0,
-            mask, self.event_callback, None)
+            kCGSessionEventTap,
+            kCGHeadInsertEventTap,
+            0,
+            mask,
+            self.event_callback,
+            None,
+        )
 
         if tap is None:
             print("ERROR: Failed to create event tap!")
@@ -561,24 +879,42 @@ class RemoteController:
         source = CFMachPortCreateRunLoopSource(None, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes)
 
+        device_names = ", ".join(d.name for d in self._device_handlers)
         print()
         print("  Press Ctrl+C to stop")
         print("=" * 60)
         print()
-        print("Listening for AB Shutter3 events...\n")
+        print(
+            f"Listening for events from {len(self._device_handlers)} device(s): {device_names}\n"
+        )
 
         signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
-        CFRunLoopRun()
+
+        # app.run() processes both CGEventTap/HID sources AND
+        # NSApplication events (menu bar clicks, window interactions).
+        # CFRunLoopRun() / NSRunLoop only handle CF sources.
+        app.run()
 
 
 def load_config(path=None):
     if path and os.path.exists(path):
         with open(path) as f:
             user_config = json.load(f)
-        config = dict(DEFAULT_CONFIG)
-        config.update(user_config)
-        return config
-    return dict(DEFAULT_CONFIG)
+        # Migrate old single-device format
+        if "devices" not in user_config and "single_click" in user_config:
+            device = dict(DEFAULT_DEVICE)
+            for key in (
+                "single_click",
+                "double_click",
+                "long_press",
+                "double_click_interval",
+                "long_press_threshold",
+            ):
+                if key in user_config:
+                    device[key] = user_config[key]
+            return {"devices": [device]}
+        return user_config
+    return {"devices": [dict(DEFAULT_DEVICE)]}
 
 
 def main():
@@ -590,12 +926,16 @@ def main():
 
     if "--help" in sys.argv or "-h" in sys.argv:
         print(__doc__)
-        print("\nDefault config (save as config.json and modify):")
-        print(json.dumps(DEFAULT_CONFIG, indent=2))
+        print("\nDefault device config (save as config.json and modify):")
+        print(json.dumps({"devices": [DEFAULT_DEVICE]}, indent=2))
         sys.exit(0)
 
+    if config_path is None:
+        config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "config.json"
+        )
     config = load_config(config_path)
-    controller = RemoteController(config)
+    controller = RemoteController(config, config_path)
     controller.run()
 
 
