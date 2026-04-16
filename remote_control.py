@@ -149,15 +149,20 @@ kIOHIDTransportKey = b"Transport"
 # Consumer Control usage page
 USAGE_PAGE_CONSUMER = 0x0C
 
-# NX key codes for volume
+# NX key codes for volume / brightness
 NX_KEYTYPE_SOUND_UP = 0
 NX_KEYTYPE_SOUND_DOWN = 1
+NX_KEYTYPE_BRIGHTNESS_UP = 2
+NX_KEYTYPE_BRIGHTNESS_DOWN = 3
 NX_KEYTYPE_MUTE = 7
 
-# Dell monitor DDC volume control
+# Dell monitor DDC volume / brightness control
 DDC_VOLUME_STEP = 5
 DDC_VOLUME_MIN = 0
 DDC_VOLUME_MAX = 100
+DDC_BRIGHTNESS_STEP = 10
+DDC_BRIGHTNESS_MIN = 0
+DDC_BRIGHTNESS_MAX = 100
 DELL_DISPLAY_PREFIX = "DELL "
 
 
@@ -556,10 +561,15 @@ class DellVolumeControl:
         self._volume = None
         self._muted = False
         self._pre_mute_volume = None
+        self._brightness = None
         self._dell_connected = False
+        self._dell_display_connected = False
         self._last_check = 0
+        self._last_display_check = 0
         self._check_interval = 5  # seconds between audio output checks
+        self._display_check_interval = 5
         self._lock = threading.Lock()
+        self._brightness_lock = threading.Lock()
         self._hud = hud
         self._check_dell()
 
@@ -597,6 +607,28 @@ class DellVolumeControl:
     @property
     def is_connected(self):
         return self._check_dell()
+
+    def _check_dell_display(self):
+        """Check if a Dell display is physically connected (independent of audio output)."""
+        now = time.monotonic()
+        if now - self._last_display_check < self._display_check_interval:
+            return self._dell_display_connected
+        self._last_display_check = now
+        try:
+            result = subprocess.run(
+                ["/opt/homebrew/bin/m1ddc", "display", "list"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            self._dell_display_connected = DELL_DISPLAY_PREFIX in result.stdout
+        except Exception:
+            self._dell_display_connected = False
+        return self._dell_display_connected
+
+    @property
+    def is_display_connected(self):
+        return self._check_dell_display()
 
     def _read_volume(self):
         try:
@@ -642,6 +674,43 @@ class DellVolumeControl:
             else:
                 vol = self._volume if self._volume is not None else 50
             self._set_volume(vol - DDC_VOLUME_STEP)
+
+    def _read_brightness(self):
+        try:
+            result = subprocess.run(
+                ["/opt/homebrew/bin/m1ddc", "get", "luminance"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            self._brightness = int(result.stdout.strip())
+        except Exception:
+            self._brightness = 50
+
+    def _set_brightness(self, level):
+        level = max(DDC_BRIGHTNESS_MIN, min(DDC_BRIGHTNESS_MAX, level))
+        self._brightness = level
+        subprocess.Popen(
+            ["/opt/homebrew/bin/m1ddc", "set", "luminance", str(level)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        ts = time.strftime("%H:%M:%S")
+        bar = "\u2588" * (level // 5) + "\u2591" * (20 - level // 5)
+        print(f"[{ts}] Dell Brightness: {bar} {level}%")
+        self._hud.show_brightness(level)
+
+    def brightness_up(self):
+        with self._brightness_lock:
+            if self._brightness is None:
+                self._read_brightness()
+            self._set_brightness((self._brightness or 50) + DDC_BRIGHTNESS_STEP)
+
+    def brightness_down(self):
+        with self._brightness_lock:
+            if self._brightness is None:
+                self._read_brightness()
+            self._set_brightness((self._brightness or 50) - DDC_BRIGHTNESS_STEP)
 
     def toggle_mute(self):
         with self._lock:
@@ -745,6 +814,18 @@ class RemoteController:
             if key_code == NX_KEYTYPE_MUTE:
                 if self.dell.is_connected and is_down:
                     self.dell.toggle_mute()
+                    return None
+                return event
+
+            if key_code == NX_KEYTYPE_BRIGHTNESS_UP:
+                if self.dell.is_display_connected and is_down:
+                    self.dell.brightness_up()
+                    return None
+                return event
+
+            if key_code == NX_KEYTYPE_BRIGHTNESS_DOWN:
+                if self.dell.is_display_connected and is_down:
+                    self.dell.brightness_down()
                     return None
                 return event
 

@@ -29,11 +29,19 @@ class VolumeHUDView(NSView):
             return None
         self._volume = 50
         self._muted = False
+        self._mode = "volume"
         return self
 
     def setVolume_muted_(self, volume, muted):
         self._volume = volume
         self._muted = muted
+        self._mode = "volume"
+        self.setNeedsDisplay_(True)
+
+    def setBrightness_(self, level):
+        self._volume = level
+        self._muted = False
+        self._mode = "brightness"
         self.setNeedsDisplay_(True)
 
     def isOpaque(self):
@@ -51,7 +59,9 @@ class VolumeHUDView(NSView):
 
         # ── Speaker icon (Unicode) ──
         icon_font = NSFont.systemFontOfSize_(28)
-        if self._muted:
+        if self._mode == "brightness":
+            icon = "☀️" if self._volume > 0 else "🌙"
+        elif self._muted:
             icon = "🔇"
         elif self._volume == 0:
             icon = "🔈"
@@ -94,7 +104,10 @@ class VolumeHUDView(NSView):
 
         # ── Percentage text ──
         pct_font = NSFont.monospacedSystemFontOfSize_weight_(14, 0.0)
-        pct_text = "MUTED" if self._muted else f"{self._volume}%"
+        if self._mode == "brightness":
+            pct_text = f"{self._volume}%"
+        else:
+            pct_text = "MUTED" if self._muted else f"{self._volume}%"
         pct_attrs = {
             "NSFont": pct_font,
             "NSColor": NSColor.colorWithCalibratedRed_green_blue_alpha_(0.7, 0.7, 0.7, 1.0),
@@ -157,6 +170,22 @@ class VolumeHUD:
         def _do_show():
             self._ensure_init()
             self._view.setVolume_muted_(volume, muted)
+            self._window.setAlphaValue_(1.0)
+            self._window.orderFrontRegardless()
+
+            if self._hide_timer:
+                self._hide_timer.cancel()
+            self._hide_timer = threading.Timer(1.5, self._fade_out)
+            self._hide_timer.daemon = True
+            self._hide_timer.start()
+
+        CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, _do_show)
+
+    def show_brightness(self, level):
+        """Show HUD in brightness mode. Thread-safe."""
+        def _do_show():
+            self._ensure_init()
+            self._view.setBrightness_(level)
             self._window.setAlphaValue_(1.0)
             self._window.orderFrontRegardless()
 
