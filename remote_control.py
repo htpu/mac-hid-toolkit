@@ -41,6 +41,9 @@ from Quartz import (
     kCGEventRightMouseDown,
     kCGEventRightMouseUp,
     CGEventCreateMouseEvent,
+    CGEventTapEnable,
+    kCGEventTapDisabledByTimeout,
+    kCGEventTapDisabledByUserInput,
 )
 import ctypes
 import ctypes.util
@@ -734,6 +737,7 @@ class RemoteController:
             self._device_handlers.append(DeviceHandler(dev_cfg))
         self._hud = VolumeHUD()
         self.dell = DellVolumeControl(self._hud)
+        self._event_tap = None
 
     def _on_config_changed(self, new_config):
         # Migrate old single-device format from menu bar
@@ -766,6 +770,11 @@ class RemoteController:
 
     # ── CGEventTap callback (system-level) ─────────────────────────
     def event_callback(self, proxy, event_type, event, refcon):
+        if event_type in (kCGEventTapDisabledByTimeout, kCGEventTapDisabledByUserInput):
+            # macOS disables the tap on sleep/wake or slow callbacks; re-enable.
+            if self._event_tap is not None:
+                CGEventTapEnable(self._event_tap, True)
+            return event
         if event_type != NX_SYSDEFINED:
             return event
 
@@ -956,6 +965,7 @@ class RemoteController:
             print("  Add python3.14")
             sys.exit(1)
 
+        self._event_tap = tap
         source = CFMachPortCreateRunLoopSource(None, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes)
 
