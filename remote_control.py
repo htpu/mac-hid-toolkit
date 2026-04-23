@@ -591,9 +591,8 @@ class DellVolumeControl:
             is_dell_output = False
             for i, line in enumerate(lines):
                 if "Default Output Device: Yes" in line:
-                    # Look backwards for device name
                     for j in range(i - 1, max(i - 10, 0), -1):
-                        if DELL_DISPLAY_PREFIX in lines[j]:
+                        if lines[j].strip().startswith("DELL"):
                             is_dell_output = True
                             break
                     break
