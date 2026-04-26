@@ -570,6 +570,7 @@ class DellVolumeControl:
         self._dell_display_connected = False
         self._audio_dell_name = None  # e.g. "DELL S2721QS"
         self._target_display = None   # m1ddc display index for audio target
+        self._brightness_by_display = {}  # idx -> last set luminance (per display)
         self._last_check = 0
         self._last_display_check = 0
         self._check_interval = 5  # seconds between audio output checks
@@ -770,14 +771,28 @@ class DellVolumeControl:
         print(f"[{ts}] Dell[{idx}] Brightness: {bar} {level}%")
         self._hud.show_brightness(level, screen_name=screen_name)
 
+    def _current_brightness(self, idx):
+        """Return cached brightness for `idx`. Each display has its own slot.
+
+        We do not seed from `m1ddc get luminance` because some Dell displays
+        return unstable VCP values (alternating reads of the same display can
+        give 0, 12, 40), which produces non-monotonic stepping. Default to
+        50% on first use and let the user step from there.
+        """
+        if idx not in self._brightness_by_display:
+            self._brightness_by_display[idx] = 50
+        return self._brightness_by_display[idx]
+
     def brightness_up(self):
         """Adjust brightness on the Dell under the cursor. Returns True if handled."""
         with self._brightness_lock:
             name, idx = self._active_dell_target()
             if idx is None:
                 return False
-            current = self._read_brightness_at(idx)
-            self._set_brightness_at(idx, current + DDC_BRIGHTNESS_STEP, name)
+            new_level = self._current_brightness(idx) + DDC_BRIGHTNESS_STEP
+            new_level = max(DDC_BRIGHTNESS_MIN, min(DDC_BRIGHTNESS_MAX, new_level))
+            self._brightness_by_display[idx] = new_level
+            self._set_brightness_at(idx, new_level, name)
             return True
 
     def brightness_down(self):
@@ -785,8 +800,10 @@ class DellVolumeControl:
             name, idx = self._active_dell_target()
             if idx is None:
                 return False
-            current = self._read_brightness_at(idx)
-            self._set_brightness_at(idx, current - DDC_BRIGHTNESS_STEP, name)
+            new_level = self._current_brightness(idx) - DDC_BRIGHTNESS_STEP
+            new_level = max(DDC_BRIGHTNESS_MIN, min(DDC_BRIGHTNESS_MAX, new_level))
+            self._brightness_by_display[idx] = new_level
+            self._set_brightness_at(idx, new_level, name)
             return True
 
     def toggle_mute(self):
