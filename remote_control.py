@@ -49,6 +49,7 @@ import ctypes
 import ctypes.util
 import json
 import os
+import re
 import signal
 import sys
 import threading
@@ -567,6 +568,8 @@ class DellVolumeControl:
         self._brightness = None
         self._dell_connected = False
         self._dell_display_connected = False
+        self._audio_dell_name = None  # e.g. "DELL S2721QS"
+        self._target_display = None   # m1ddc display index for audio target
         self._last_check = 0
         self._last_display_check = 0
         self._check_interval = 5  # seconds between audio output checks
@@ -575,6 +578,31 @@ class DellVolumeControl:
         self._brightness_lock = threading.Lock()
         self._hud = hud
         self._check_dell()
+
+    def _resolve_display_index(self, name):
+        """Map a Dell device name (e.g. 'DELL S2721QS') to m1ddc display index."""
+        if not name:
+            return None
+        try:
+            result = subprocess.run(
+                ["/opt/homebrew/bin/m1ddc", "display", "list"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            for line in result.stdout.splitlines():
+                m = re.match(r"\s*\[(\d+)\]\s+(.+?)\s+\(", line)
+                if m and m.group(2).strip() == name:
+                    return int(m.group(1))
+        except Exception:
+            pass
+        return None
+
+    def _m1ddc_target(self):
+        """Return ['display', N] prefix for m1ddc commands, or [] if no target."""
+        if self._target_display is not None:
+            return ["display", str(self._target_display)]
+        return []
 
     def _check_dell(self):
         """Check if Dell monitor is the current audio output (cached for 5s)."""
@@ -592,18 +620,28 @@ class DellVolumeControl:
             )
             lines = result.stdout.split("\n")
             is_dell_output = False
+            dell_name = None
             for i, line in enumerate(lines):
                 if "Default Output Device: Yes" in line:
                     for j in range(i - 1, max(i - 10, 0), -1):
-                        if lines[j].strip().startswith("DELL"):
+                        s = lines[j].strip()
+                        if s.startswith("DELL"):
                             is_dell_output = True
+                            dell_name = s.rstrip(":").strip()
                             break
                     break
+            target_changed = dell_name != self._audio_dell_name
             self._dell_connected = is_dell_output
-            if self._dell_connected and self._volume is None:
+            self._audio_dell_name = dell_name
+            if is_dell_output:
+                self._target_display = self._resolve_display_index(dell_name)
+            else:
+                self._target_display = None
+            if self._dell_connected and (self._volume is None or target_changed):
                 self._read_volume()
         except Exception:
             self._dell_connected = False
+            self._target_display = None
         return self._dell_connected
 
     @property
@@ -635,7 +673,7 @@ class DellVolumeControl:
     def _read_volume(self):
         try:
             result = subprocess.run(
-                ["/opt/homebrew/bin/m1ddc", "get", "volume"],
+                ["/opt/homebrew/bin/m1ddc", *self._m1ddc_target(), "get", "volume"],
                 capture_output=True,
                 text=True,
                 timeout=2,
@@ -648,7 +686,7 @@ class DellVolumeControl:
         vol = max(DDC_VOLUME_MIN, min(DDC_VOLUME_MAX, vol))
         self._volume = vol
         subprocess.Popen(
-            ["/opt/homebrew/bin/m1ddc", "set", "volume", str(vol)],
+            ["/opt/homebrew/bin/m1ddc", *self._m1ddc_target(), "set", "volume", str(vol)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
