@@ -693,7 +693,7 @@ class DellVolumeControl:
         ts = time.strftime("%H:%M:%S")
         bar = "\u2588" * (vol // 5) + "\u2591" * (20 - vol // 5)
         print(f"[{ts}] Dell Volume: {bar} {vol}%")
-        self._hud.show(vol, muted=self._muted)
+        self._hud.show(vol, muted=self._muted, screen_name=self._audio_dell_name)
 
     def volume_up(self):
         with self._lock:
@@ -738,7 +738,7 @@ class DellVolumeControl:
         ts = time.strftime("%H:%M:%S")
         bar = "\u2588" * (level // 5) + "\u2591" * (20 - level // 5)
         print(f"[{ts}] Dell Brightness: {bar} {level}%")
-        self._hud.show_brightness(level)
+        self._hud.show_brightness(level, screen_name=self._audio_dell_name)
 
     def brightness_up(self):
         with self._brightness_lock:

@@ -122,12 +122,35 @@ class VolumeHUDView(NSView):
 class VolumeHUD:
     """Thread-safe volume HUD manager."""
 
+    HUD_W = 160
+    HUD_H = 120
+
     def __init__(self):
         self._window = None
         self._view = None
         self._hide_timer = None
         self._lock = threading.Lock()
         self._initialized = False
+
+    def _find_screen(self, name):
+        """Return NSScreen whose localizedName matches `name`, or None."""
+        if not name:
+            return None
+        for s in NSScreen.screens():
+            if s.respondsToSelector_("localizedName") and s.localizedName() == name:
+                return s
+        return None
+
+    def _position_on_screen(self, screen):
+        """Move the HUD window to the given NSScreen (or main if None)."""
+        if screen is None:
+            screen = NSScreen.mainScreen()
+        if screen is None:
+            return
+        sf = screen.frame()
+        x = sf.origin.x + (sf.size.width - self.HUD_W) / 2
+        y = sf.origin.y + sf.size.height * 0.25
+        self._window.setFrameOrigin_((x, y))
 
     def _ensure_init(self):
         """Initialize NSWindow on first use (must be called on main thread)."""
@@ -137,17 +160,16 @@ class VolumeHUD:
         app = NSApplication.sharedApplication()
         app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 
-        hud_w, hud_h = 160, 120
         screen = NSScreen.mainScreen()
         if screen:
             sf = screen.frame()
-            x = (sf.size.width - hud_w) / 2
-            y = sf.size.height * 0.25
+            x = sf.origin.x + (sf.size.width - self.HUD_W) / 2
+            y = sf.origin.y + sf.size.height * 0.25
         else:
             x, y = 500, 300
 
         self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            ((x, y), (hud_w, hud_h)),
+            ((x, y), (self.HUD_W, self.HUD_H)),
             NSWindowStyleMaskBorderless,
             NSBackingStoreBuffered,
             False,
@@ -159,16 +181,21 @@ class VolumeHUD:
         self._window.setCollectionBehavior_(1 << 0 | 1 << 4)  # canJoinAllSpaces | transient
 
         self._view = VolumeHUDView.alloc().initWithFrame_(
-            ((0, 0), (hud_w, hud_h)))
+            ((0, 0), (self.HUD_W, self.HUD_H)))
         self._window.setContentView_(self._view)
         self._window.setAlphaValue_(0.0)
 
         self._initialized = True
 
-    def show(self, volume, muted=False):
-        """Show HUD with given volume. Thread-safe — dispatches to main thread."""
+    def show(self, volume, muted=False, screen_name=None):
+        """Show HUD with given volume. Thread-safe — dispatches to main thread.
+
+        If `screen_name` matches a connected display's localized name, the HUD
+        is positioned on that screen; otherwise it falls back to the main screen.
+        """
         def _do_show():
             self._ensure_init()
+            self._position_on_screen(self._find_screen(screen_name))
             self._view.setVolume_muted_(volume, muted)
             self._window.setAlphaValue_(1.0)
             self._window.orderFrontRegardless()
@@ -181,15 +208,15 @@ class VolumeHUD:
 
         CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, _do_show)
 
-    def show_brightness(self, level):
+    def show_brightness(self, level, screen_name=None):
         """Show HUD in brightness mode. Thread-safe."""
         def _do_show():
             self._ensure_init()
+            self._position_on_screen(self._find_screen(screen_name))
             self._view.setBrightness_(level)
             self._window.setAlphaValue_(1.0)
             self._window.orderFrontRegardless()
 
-            # Cancel previous hide timer
             if self._hide_timer:
                 self._hide_timer.cancel()
             self._hide_timer = threading.Timer(1.5, self._fade_out)
