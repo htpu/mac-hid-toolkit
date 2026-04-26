@@ -715,42 +715,79 @@ class DellVolumeControl:
                 vol = self._volume if self._volume is not None else 50
             self._set_volume(vol - DDC_VOLUME_STEP)
 
-    def _read_brightness(self):
+    def _active_dell_target(self):
+        """Return (screen_name, display_idx) for the Dell display under the cursor.
+
+        Falls back to None if the cursor is on a non-Dell screen (so brightness
+        keys can pass through to macOS for built-in displays).
+        """
+        try:
+            from AppKit import NSEvent, NSScreen
+            pt = NSEvent.mouseLocation()
+            target = None
+            for s in NSScreen.screens():
+                f = s.frame()
+                if (f.origin.x <= pt.x < f.origin.x + f.size.width and
+                        f.origin.y <= pt.y < f.origin.y + f.size.height):
+                    target = s
+                    break
+            if target is None:
+                target = NSScreen.mainScreen()
+            if target is None or not target.respondsToSelector_("localizedName"):
+                return None, None
+            name = target.localizedName()
+            if not name or not name.startswith("DELL"):
+                return None, None
+            idx = self._resolve_display_index(name)
+            if idx is None:
+                return None, None
+            return name, idx
+        except Exception:
+            return None, None
+
+    def _read_brightness_at(self, idx):
         try:
             result = subprocess.run(
-                ["/opt/homebrew/bin/m1ddc", "get", "luminance"],
+                ["/opt/homebrew/bin/m1ddc", "display", str(idx), "get", "luminance"],
                 capture_output=True,
                 text=True,
                 timeout=2,
             )
-            self._brightness = int(result.stdout.strip())
+            return int(result.stdout.strip())
         except Exception:
-            self._brightness = 50
+            return 50
 
-    def _set_brightness(self, level):
+    def _set_brightness_at(self, idx, level, screen_name):
         level = max(DDC_BRIGHTNESS_MIN, min(DDC_BRIGHTNESS_MAX, level))
         self._brightness = level
         subprocess.Popen(
-            ["/opt/homebrew/bin/m1ddc", "set", "luminance", str(level)],
+            ["/opt/homebrew/bin/m1ddc", "display", str(idx), "set", "luminance", str(level)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         ts = time.strftime("%H:%M:%S")
         bar = "\u2588" * (level // 5) + "\u2591" * (20 - level // 5)
-        print(f"[{ts}] Dell Brightness: {bar} {level}%")
-        self._hud.show_brightness(level, screen_name=self._audio_dell_name)
+        print(f"[{ts}] Dell[{idx}] Brightness: {bar} {level}%")
+        self._hud.show_brightness(level, screen_name=screen_name)
 
     def brightness_up(self):
+        """Adjust brightness on the Dell under the cursor. Returns True if handled."""
         with self._brightness_lock:
-            if self._brightness is None:
-                self._read_brightness()
-            self._set_brightness((self._brightness or 50) + DDC_BRIGHTNESS_STEP)
+            name, idx = self._active_dell_target()
+            if idx is None:
+                return False
+            current = self._read_brightness_at(idx)
+            self._set_brightness_at(idx, current + DDC_BRIGHTNESS_STEP, name)
+            return True
 
     def brightness_down(self):
         with self._brightness_lock:
-            if self._brightness is None:
-                self._read_brightness()
-            self._set_brightness((self._brightness or 50) - DDC_BRIGHTNESS_STEP)
+            name, idx = self._active_dell_target()
+            if idx is None:
+                return False
+            current = self._read_brightness_at(idx)
+            self._set_brightness_at(idx, current - DDC_BRIGHTNESS_STEP, name)
+            return True
 
     def toggle_mute(self):
         with self._lock:
@@ -865,14 +902,14 @@ class RemoteController:
 
             if key_code == NX_KEYTYPE_BRIGHTNESS_UP:
                 if self.dell.is_display_connected and is_down:
-                    self.dell.brightness_up()
-                    return None
+                    if self.dell.brightness_up():
+                        return None
                 return event
 
             if key_code == NX_KEYTYPE_BRIGHTNESS_DOWN:
                 if self.dell.is_display_connected and is_down:
-                    self.dell.brightness_down()
-                    return None
+                    if self.dell.brightness_down():
+                        return None
                 return event
 
         except Exception:
